@@ -1,0 +1,21 @@
+trigger:
+- master
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+steps:
+- script: echo Hello, world!
+  displayName: 'Run a one-line script'
+- task: CMake@1
+  inputs:
+    workingDirectory: 'build'
+    cmakeArgs: '.. -DCMAKE_BUILD_TYPE=Release -DLSL_NO_FANCY_LIBNAME=1'
+  displayName: 'Configure build'
+- task: CMake@1
+  inputs:
+    cmakeArgs: '--build . --target install'
+  displayName: 'Build files'
+- script: cpack
+  workingDirectory: 'build'
+  displayName: 'package build artifacts'

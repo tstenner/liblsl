@@ -6,6 +6,7 @@
 #include <boost/asio/ip/udp.hpp>
 #include <memory>
 
+using namespace lslboost::asio;
 using lslboost::asio::ip::udp;
 using lslboost::system::error_code;
 
@@ -45,8 +46,8 @@ public:
 	 * This server will listen on a multicast address and responds only to LSL:shortinfo requests.
 	 * This is for multicast/broadcast (and optionally unicast) local service discovery.
 	 */
-	udp_server(const stream_info_impl_p &info, lslboost::asio::io_context &io,
-		const std::string &address, uint16_t port, int ttl, const std::string &listen_address);
+	udp_server(const stream_info_impl_p &info, lslboost::asio::io_context &io, ip::address addr,
+		uint16_t port, int ttl, const std::string &listen_address);
 
 
 	/// Start serving UDP traffic.

@@ -49,6 +49,7 @@ jobs:
               cmake --build build --config Release -j --target package
            fi
            cmake -E remove_directory build/uploadpkgs/_CPack_Packages
+           cp testing/lslcfgs/default.cfg .
     - name: upload install dir
       uses: actions/upload-artifact@master
       with:

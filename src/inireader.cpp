@@ -1,6 +1,7 @@
 #include "inireader.h"
 #include <algorithm>
 #include <cctype>
+#include <istream>
 
 void INI::load(std::istream &infile) {
 	std::string line;

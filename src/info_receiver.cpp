@@ -1,9 +1,8 @@
 #include "info_receiver.h"
 #include "cancellable_streambuf.h"
 #include "inlet_connection.h"
-#include <iostream>
+#include <istream>
 #include <memory>
-#include <sstream>
 
 lsl::info_receiver::info_receiver(inlet_connection &conn) : conn_(conn) {
 	conn_.register_onlost(this, &fullinfo_upd_);
@@ -45,16 +44,15 @@ void lsl::info_receiver::info_thread() {
 				// make a new stream buffer & stream
 				cancellable_streambuf buffer;
 				buffer.register_at(&conn_);
-				std::iostream server_stream(&buffer);
 				// connect...
 				buffer.connect(conn_.get_tcp_endpoint());
+				std::iostream server_stream(&buffer);
 				// send the query
 				server_stream << "LSL:fullinfo\r\n" << std::flush;
 				// receive and parse the response
-				std::ostringstream os;
-				os << server_stream.rdbuf();
+				std::string msg;
+				std::getline(server_stream, msg, '\0');
 				stream_info_impl info;
-				std::string msg = os.str();
 				info.from_fullinfo_message(msg);
 				// if this is not a valid streaminfo we retry
 				if (!info.created_at()) continue;

@@ -3,8 +3,8 @@
 #include "netinterfaces.h"
 #include "resolver_impl.h"
 #include "socket_utils.h"
+#include <algorithm>
 #include <boost/asio/ip/multicast.hpp>
-#include <sstream>
 
 using namespace lsl;
 using namespace lslboost::asio;
@@ -47,12 +47,11 @@ resolve_attempt_udp::resolve_attempt_udp(io_context &io, const udp &protocol,
 	// precalc the query id (hash of the query string, as string)
 	query_id_ = std::to_string(std::hash<std::string>()(query));
 	// precalc the query message
-	std::ostringstream os;
-	os.precision(16);
-	os << "LSL:shortinfo\r\n";
-	os << query_ << "\r\n";
-	os << recv_socket_.local_endpoint().port() << " " << query_id_ << "\r\n";
-	query_msg_ = os.str();
+	query_msg_ = "LSL:shortinfo\r\n";
+	query_msg_.append(query_).append("\r\n");
+	query_msg_.append(std::to_string(recv_socket_.local_endpoint().port()));
+	query_msg_.append(" ").append(query_id_).append("\r\n");
+
 
 	DLOG_F(2, "Waiting for query results (port %d) for %s", recv_socket_.local_endpoint().port(),
 		query_msg_.c_str());
@@ -104,16 +103,15 @@ void resolve_attempt_udp::handle_receive_outcome(error_code err, std::size_t len
 	if (!err) {
 		try {
 			// first parse & check the query id
-			std::istringstream is(std::string(resultbuf_, len));
-			std::string returned_id;
-			getline(is, returned_id);
-			returned_id = trim(returned_id);
+			auto first_newline = std::find(resultbuf_, resultbuf_ + len, '\n');
+			if (first_newline == resultbuf_ + len)
+				throw std::runtime_error("no data after newline");
+			std::string returned_id(trim(std::string(resultbuf_, first_newline)));
+
 			if (returned_id == query_id_) {
 				// parse the rest of the query into a stream_info
 				stream_info_impl info;
-				std::ostringstream os;
-				os << is.rdbuf();
-				info.from_shortinfo_message(os.str());
+				info.from_shortinfo_message(std::string(first_newline, resultbuf_ + len));
 				std::string uid = info.uid();
 				{
 					// update the results

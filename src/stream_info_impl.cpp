@@ -1,5 +1,6 @@
 #include "stream_info_impl.h"
 #include "api_config.h"
+#include "cast.h"
 #include <algorithm>
 #include <boost/thread/lock_guard.hpp>
 #include <limits>
@@ -8,7 +9,6 @@
 using namespace lsl;
 using namespace pugi;
 using std::string;
-using std::to_string;
 
 stream_info_impl::stream_info_impl()
 	: channel_count_(0), nominal_srate_(0), channel_format_(cft_undefined), version_(0),
@@ -52,9 +52,9 @@ void stream_info_impl::write_xml(xml_document &doc) {
 	append_text_node(info, "channel_format", channel_format_strings[channel_format_]);
 	append_text_node(info, "source_id", source_id_);
 	// floating point fields: use locale independent to_string function
-	append_text_node(info, "nominal_srate", to_string(nominal_srate_));
-	append_text_node(info, "version", to_string(version_ / 100.));
-	append_text_node(info, "created_at", to_string(created_at_));
+	append_text_node(info, "nominal_srate", lsl::to_string(nominal_srate_));
+	append_text_node(info, "version", lsl::to_string(version_ / 100.));
+	append_text_node(info, "created_at", lsl::to_string(created_at_));
 	append_text_node(info, "uid", uid_);
 	append_text_node(info, "session_id", session_id_);
 	append_text_node(info, "hostname", hostname_);

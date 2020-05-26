@@ -233,6 +233,7 @@ void api_config::load_from_file(const std::string &filename) {
 		continuous_resolve_interval_ = pt.get("tuning.ContinuousResolveInterval", 0.5);
 		timer_resolution_ = pt.get("tuning.TimerResolution", 1);
 		max_cached_queries_ = pt.get("tuning.MaxCachedQueries", 100);
+		validate_query_responses_ = pt.get("tuning.ValidateQueryResponses", false);
 		time_update_interval_ = pt.get("tuning.TimeUpdateInterval", 2.0);
 		time_update_minprobes_ = pt.get("tuning.TimeUpdateMinProbes", 6);
 		time_probe_count_ = pt.get("tuning.TimeProbeCount", 8);

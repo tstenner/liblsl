@@ -11,15 +11,13 @@
 #include <mutex>
 #include <thread>
 
-using lslboost::asio::ip::tcp;
-using lslboost::asio::ip::udp;
+using namespace lslboost::asio;
+using lslboost::system::error_code;
+using endpoint_list = std::vector<ip::udp::endpoint>;
 using lslboost::system::error_code;
 
 namespace lsl {
 class api_config;
-
-/// A container for resolve results (map from stream instance UID onto (stream_info,receive-time)).
-typedef std::map<std::string, std::pair<stream_info_impl, double>> result_container;
 
 /**
  * A stream resolver object.
@@ -42,7 +40,8 @@ public:
 	 *
 	 * @note Resolution logic: If api_config::known_peers is empty, a new multicast wave will be
 	 * scheduled every mcast_min_rtt (until a timeout expires or the desired number of streams has
-	 * been resolved).If api_config::known_peers is non-empty, a multicast wave and a unicast wave
+	 * been resolved).
+	 * If api_config::known_peers is non-empty, a multicast wave and a unicast wave
 	 * will be scheduled in alternation.
 	 * The spacing between waves will be no shorter than the respective minimum RTTs.
 	 * In continuous mode a special, somewhat more lax, set of timings is used (see API config).
@@ -122,63 +121,27 @@ public:
 private:
 	/// This function starts a new wave of resolves.
 	void next_resolve_wave();
-
-	/// Start a new resolver attempt on the multicast hosts.
-	void udp_multicast_burst();
-
-	/// Start a new resolver attempt on the known peers.
-	void udp_unicast_burst(error_code err);
-
-	/// Cancel the currently ongoing resolve, if any.
-	void cancel_ongoing_resolve();
-
+	std::shared_ptr<class resolve_attempt> create_attempt(const std::string& query);
 
 	// constants (mostly config-deduced)
-	/// pointer to our configuration object
-	const api_config *cfg_;
-	/// UDP protocols under consideration
-	std::vector<udp> udp_protocols_;
-	/// TCP protocols under consideration
-	std::vector<tcp> tcp_protocols_;
 	/// the list of multicast endpoints under consideration
-	std::vector<udp::endpoint> mcast_endpoints_;
+	endpoint_list mcast_endpoints_;
 	/// the list of per-host UDP endpoints under consideration
-	std::vector<udp::endpoint> ucast_endpoints_;
+	endpoint_list ucast_endpoints_;
 
 	// things related to cancellation
 	/// if set, no more resolves can be started (destructively cancelled).
-	std::atomic<bool> cancelled_;
-	/// if set, ongoing operations will finished quickly
-	std::atomic<bool> expired_;
+	std::atomic<bool> cancelled_{false};
 
 	// reinitialized for each query
-	/// our current query string
-	std::string query_;
-	/// the minimum number of results that we want
-	int minimum_;
 	/// forget results that are older than this (continuous operation only)
-	double forget_after_;
-	/// wait until this point in time before returning results (optional to allow for returning
-	/// potentially more than a minimum number of results)
-	double wait_until_;
-	/// whether this is a fast resolve: determines the rate at which the query is repeated
-	bool fast_mode_;
-	/// results are stored here
-	result_container results_;
-	/// a mutex that protects the results map
-	std::mutex results_mut_;
+	double forget_after_{FOREVER};
 
-	// io objects
-	/// our IO service
-	io_context_p io_;
+	/// a shared pointer to the current resolve operation
+	std::shared_ptr<class resolve_attempt> current_resolve;
+
 	/// a thread that runs background IO if we are performing a resolve_continuous
 	std::shared_ptr<std::thread> background_io_;
-	/// the overall timeout for a query
-	lslboost::asio::steady_timer resolve_timeout_expired_;
-	/// a timer that fires when a new wave should be scheduled
-	lslboost::asio::steady_timer wave_timer_;
-	/// a timer that fires when the unicast wave should be scheduled
-	lslboost::asio::steady_timer unicast_timer_;
 };
 
 } // namespace lsl

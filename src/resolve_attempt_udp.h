@@ -1,6 +1,4 @@
-#ifndef RESOLVE_ATTEMPT_UDP_H
-#define RESOLVE_ATTEMPT_UDP_H
-
+#pragma once
 #include "cancellation.h"
 #include "netinterfaces.h"
 #include "stream_info_impl.h"
@@ -9,24 +7,35 @@
 #include <boost/asio/steady_timer.hpp>
 #include <map>
 
-namespace lslboost {
-class mutex;
-}
-namespace lslboost {
-namespace system {
-class error_code;
-}
-} // namespace lslboost
-
-using lslboost::asio::ip::udp;
+using namespace lslboost::asio;
+using endpoint_list = std::vector<ip::udp::endpoint>;
 using lslboost::system::error_code;
+using time_point_t = std::chrono::steady_clock::time_point;
+using duration_t = std::chrono::steady_clock::duration;
+
+namespace pugi {
+class xpath_query;
+}
 
 namespace lsl {
-
 /// A container for resolve results (map from stream instance UID onto (stream_info,receive-time)).
 typedef std::map<std::string, std::pair<stream_info_impl, double>> result_container;
 /// A container for outgoing multicast interfaces
 typedef std::vector<class netif> mcast_interface_list;
+
+class resolve_query_sender {
+	ip::udp::socket sock_;
+	const endpoint_list &targets_;
+public:
+	resolve_query_sender(ip::udp::socket &&sock, const endpoint_list &targets)
+		: sock_(std::move(sock)), targets_(targets) {}
+	resolve_query_sender(resolve_query_sender &&) = default;
+	~resolve_query_sender() = default;
+	void close() { sock_.close(); }
+	bool is_open() const { return sock_.is_open(); }
+
+	bool send_query(const std::string &buf);
+};
 
 /**
  * An asynchronous resolve attempt for a single query targeted at a set of endpoints, via UDP.
@@ -36,10 +45,8 @@ typedef std::vector<class netif> mcast_interface_list;
  * packet receives. The operation will wait for return packets until either a particular timeout has
  * been reached or until it is cancelled via the cancel() method.
  */
-class resolve_attempt_udp : public cancellable_obj,
-							public std::enable_shared_from_this<resolve_attempt_udp> {
-	using endpoint_list = std::vector<udp::endpoint>;
-
+class resolve_attempt : public std::enable_shared_from_this<resolve_attempt> {
+	using timer_t = lslboost::asio::steady_timer;
 public:
 	/**
 	 * Instantiate and set up a new resolve attempt.
@@ -60,85 +67,88 @@ public:
 	 * @param registry A registry where the attempt can register itself as active so it can be
 	 * cancelled during shutdown.
 	 */
-	resolve_attempt_udp(lslboost::asio::io_context &io, const udp &protocol,
-		const std::vector<udp::endpoint> &targets, const std::string &query,
-		result_container &results, std::mutex &results_mut, double cancel_after = 5.0,
-		cancellable_registry *registry = nullptr);
-
+	resolve_attempt(const endpoint_list &ucast_targets,
+		const endpoint_list &mcast_targets, const std::string &query);
 	/// Destructor
-	~resolve_attempt_udp();
+	~resolve_attempt();
 
-	/// Start the attempt asynchronously.
-	void begin();
+	/// Set up handlers and timers. This has to be called after the constructor
+	/// is finished because otherwise enable_shared_from_this() will fail.
+	void setup_handlers(double unicast_wait, double multicast_wait, double quit_after = FOREVER);
 
-	/// Cancel operations asynchronously, and destructively.
-	/// Note that this mostly serves to expedite the destruction of the object,
-	/// which would happen anyway after some time.
-	/// As the attempt instance is owned by the handler chains
-	/// the cancellation eventually leads to the destruction of the object.
+	/**
+	 * Cancel operations asynchronously, and destructively.
+	 * @note This mostly serves to expedite the destruction of the object, which would happen anyway
+	 * after some time. As the attempt instance is owned by the handler chains the cancellation
+	 * eventually leads to the destruction of the object.
+	 */
 	void cancel();
-
 private:
-	// === send and receive handlers ===
+	bool is_done();
+
+	/// @section send and receive handlers ===
+	friend class resolver_impl;
 
 	/// This function asks to receive the next result packet.
 	void receive_next_result();
 
-	/// Thos function starts an async send operation for the given current endpoint.
-	void send_next_query(
-		endpoint_list::const_iterator i, mcast_interface_list::const_iterator mcit);
+	/// Schedule sending the next queries. Schedules itself again after the timer expires.
+	void schedule_packet_burst(timer_t& timer, double delay, resolve_query_sender& sender);
 
 	/// Handler that gets called when a receive has completed.
 	void handle_receive_outcome(error_code err, std::size_t len);
 
 	// === cancellation ===
-
-	/// Cancel the outstanding operations.
+	/// Cancel the outstanding operations, has to be called from an io_context
 	void do_cancel();
 
-
 	// data shared with the resolver_impl
-	/// reference to the IO service that executes our actions
-	lslboost::asio::io_context &io_;
+	/// the IO context that executes our actions
+	lslboost::asio::io_context io_;
 	/// shared result container
-	result_container &results_;
+	result_container results_;
 	/// shared mutex that protects the results
-	std::mutex &results_mut_;
+	std::mutex results_mut_;
 
 	// constant over the lifetime of this attempt
-	/// the timeout for giving up
+	/// the timepoint after which we're giving up
 	double cancel_after_;
 	/// whether the operation has been cancelled
-	bool cancelled_;
-	/// list of endpoints that should receive the query
-	std::vector<udp::endpoint> targets_;
-	/// the query string
+	bool cancelled_{false};
+	endpoint_list unicast_targets_;
+	endpoint_list broadcast_targets_;
+	/// list of endpoints that should receive the query (mcast v4, mcast v6)
+	endpoint_list mcast_targets_[2];
+	/// optional: the query XPath
 	std::string query_;
 	/// the query message that we're sending
 	std::string query_msg_;
 	/// the (more or less) unique id for this query
 	std::string query_id_;
+	/// the minimum number of results that we want
+	int minimum_{0};
+	/// wait until this point in time before returning results (optional to allow for returning
+	/// potentially more than a minimum number of results)
+	double resolve_atleast_until_{0};
 
 	// data maintained/modified across handler invocations
 	/// the endpoint from which we received the last result
-	udp::endpoint remote_endpoint_;
+	ip::udp::endpoint remote_endpoint_;
 	/// holds a single result received from the net
 	char resultbuf_[65536];
 
 	// IO objects
-	/// socket to send data over (for unicasts)
-	udp::socket unicast_socket_;
-	/// socket to send data over (for broadcasts)
-	udp::socket broadcast_socket_;
-	/// socket to send data over (for multicasts)
-	udp::socket multicast_socket_;
-	/// Interface addresses to send multicast packets from
-	const mcast_interface_list &multicast_interfaces;
 	/// socket to receive replies (always unicast)
-	udp::socket recv_socket_;
+	ip::udp::socket recv_socket_;
 	/// timer to schedule the cancel action
-	lslboost::asio::steady_timer cancel_timer_;
+	timer_t cancel_timer_;
+	/// Optional: socket to send unicast queries from
+	std::unique_ptr<resolve_query_sender> unicast_sender;
+	/// sockets the queries are sent from
+	std::vector<resolve_query_sender> mcast_senders;
+	/// a timer that fires when a new wave should be scheduled
+	timer_t multicast_timer_;
+	/// a timer that fires when the unicast wave should be scheduled
+	timer_t unicast_timer_;
 };
 } // namespace lsl
-
-#endif

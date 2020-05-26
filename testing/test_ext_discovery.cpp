@@ -27,6 +27,11 @@ TEST_CASE("Invalid queries are caught before sending the query", "[resolver][str
 	REQUIRE_THROWS(lsl::resolve_stream("invalid'query", 0, 0.1));
 }
 
+TEST_CASE("Matching works", "[resolver]") {
+	lsl::stream_info("resolvetest", "Resolve");
+	REQUIRE(lsl::resolve_stream("name", "doesntmatchanything", 1, 1.).empty());
+}
+
 TEST_CASE("fullinfo", "[inlet][fullinfo][basic]") {
 	lsl::stream_info info("fullinfo", "unittest", 1, 1, lsl::cf_int8, "fullinfo1234");
 	const std::string extinfo("contents\nwith\n\tnewlines");

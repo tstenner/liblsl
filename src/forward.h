@@ -9,10 +9,6 @@ namespace system {
 class error_code;
 }
 namespace asio {
-namespace ip {
-class tcp;
-class udp;
-} // namespace ip
 class io_context;
 } // namespace asio
 } // namespace lslboost

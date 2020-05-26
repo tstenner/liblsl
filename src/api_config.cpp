@@ -116,7 +116,7 @@ void api_config::load_from_file(const std::string &filename) {
 		std::string ipv6_multicast_group =
 			pt.get("multicast.IPv6MulticastGroup", "113D:6FDD:2C17:A643:FFE2:1BD1:3CD2");
 		std::vector<std::string> machine_group =
-			parse_set(pt.get("multicast.MachineAddresses", "{127.0.0.1}"));
+			parse_set(pt.get("multicast.MachineAddresses", "{}"));
 		// 224.0.0.1 is the group for all directly connected hosts (RFC1112)
 		std::vector<std::string> link_group = parse_set(
 			pt.get("multicast.LinkAddresses", "{255.255.255.255, 224.0.0.1, 224.0.0.183}"));

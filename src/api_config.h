@@ -174,6 +174,8 @@ public:
 	int timer_resolution() const { return timer_resolution_; }
 	/// The maximum number of most-recently-used queries that is cached.
 	int max_cached_queries() const { return max_cached_queries_; }
+	/// Validate query responses?
+	bool validate_query_responses() const { return validate_query_responses_; }
 	/// Interval between background time correction updates.
 	double time_update_interval() const { return time_update_interval_; }
 	/// Minimum number of probes that must have been successful to perform a time update.
@@ -242,6 +244,7 @@ private:
 	double continuous_resolve_interval_;
 	int timer_resolution_;
 	int max_cached_queries_;
+	bool validate_query_responses_;
 	double time_update_interval_;
 	int time_update_minprobes_;
 	int time_probe_count_;

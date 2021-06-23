@@ -1,0 +1,4 @@
+#pragma once
+#cmakedefine LSL_VERSION_INFO "@LSL_VERSION_INFO@"
+#cmakedefine LSL_LIB_TYPE "@LSL_LIB_TYPE@"
+#define LSL_LIBRARY_INFO_STR LSL_VERSION_INFO "/link:" LSL_LIB_TYPE

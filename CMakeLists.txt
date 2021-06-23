@@ -146,10 +146,8 @@ endif()
 # generate a version information string that can be retrieved with the exported
 # lsl_library_info() function
 set(LSL_VERSION_INFO "git:${lslgitrevision}/branch:${lslgitbranch}/build:${CMAKE_BUILD_TYPE}/compiler:${CMAKE_CXX_COMPILER_ID}-${CMAKE_CXX_COMPILER_VERSION}")
-set_source_files_properties("src/buildinfo.cpp"
-	PROPERTIES COMPILE_DEFINITIONS
-	LSL_LIBRARY_INFO_STR="${LSL_VERSION_INFO}/link:${LSL_LIB_TYPE}"
-)
+configure_file(src/buildinfo.h.in buildinfo.h)
+set_source_files_properties("src/buildinfo.cpp" PROPERTIES COMPILE_DEFINITIONS LSL_CMAKE_INFO)
 set_source_files_properties("thirdparty/loguru/loguru.cpp"
 	PROPERTIES COMPILE_DEFINITIONS LOGURU_STACKTRACES=$<BOOL:${LSL_DEBUGLOG}>)
 

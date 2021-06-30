@@ -15,11 +15,6 @@ on:
         required: false
         default: ''
 
-defaults:
-  run:
-    shell: bash
-
-
 jobs:
   build:
     name: ${{ matrix.config.name }}
@@ -32,19 +27,33 @@ jobs:
         - {name: "ubuntu-18.04", os: "ubuntu-latest",  docker: "ubuntu:18.04" }
         - {name: "windows-x64",  os: "windows-latest", cmake_extra: "-T v140,host=x86"}
         - {name: "windows-32",   os: "windows-latest", cmake_extra: "-T v140,host=x86 -A Win32"}
+        - {name: "windows-mingw64", os: "windows-latest", cmake_extra: "-G 'MSYS Makefiles' -DLSL_OPTIMIZATIONS=OFF"}
         - {name: "macOS-latest", os: "macOS-latest"}
     
     # runs all steps in the container configured in config.docker or as subprocesses when empty
     container: ${{ matrix.config.docker }}
+
+    # Use default bash for all targets except for MinGW
+    defaults:
+      run:
+        shell: ${{ matrix.config.name == 'windows-mingw64' && 'msys2 {0}' || 'bash' }}
+
     steps:
     - uses: actions/checkout@v2
+    - uses: msys2/setup-msys2@v2
+      if: matrix.config.name == 'windows-mingw'
+      with:
+        release: false
     - name: set up build environment in container
       run: |
          apt update
          apt install -y --no-install-recommends g++ git python3-pip ninja-build file dpkg-dev lsb-release sudo curl
          python3 -m pip install cmake
       if: ${{ matrix.config.docker }}
-
+    - uses: msys2/setup-msys2@v2
+      with:
+        release: false
+      if: ${{ matrix.config.name == 'windows-mingw64' }}
     - name: Configure CMake
       run: |
            if [[ "${{ matrix.config.os }}" == "ubuntu-20.04" ]]; then
@@ -62,7 +71,7 @@ jobs:
                 ${{ matrix.config.cmake_extra }} 
             echo ${PWD}
     - name: make
-      run: cmake --build build --target install --config Release -j
+      run: cmake --build build --target install --config Release -j --verbose
   
     - name: package
       run: |
@@ -108,7 +117,7 @@ jobs:
       timeout-minutes: 5
     
     - name: unit tests (exported functions)
-      run: install/bin/lsl_test_exported --order rand --wait-for-keypress never --durations yes
+      run: install/bin/lsl_test_exported --wait-for-keypress never --durations yes
       timeout-minutes: 5
       if: ${{ success() || failure() }}
     - name: upload to release page

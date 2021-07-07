@@ -19,7 +19,7 @@ uint16_t bind_and_listen_to_port_in_range(
 	asio::ip::tcp::acceptor &acc, asio::ip::tcp protocol, int backlog);
 
 /// Measure the endian conversion performance of this machine.
-double measure_endian_performance();
+int measure_endian_performance();
 } // namespace lsl
 
 #endif

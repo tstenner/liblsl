@@ -372,17 +372,14 @@ void client_session::handle_read_feedparams(
 		}
 
 		if (request_protocol_version >= 110) {
-			int client_byte_order = 1234;		  // assume little endian
-			double client_endian_performance = 0; // the other party's endian conversion performance
-			bool client_has_ieee754_floats =
-				true; // the client has IEEE-754 compliant floating point formats
+			int client_byte_order = 1234;			// assume little endian
+			int client_endian_performance = 0;		// the client's endian conversion performance
+			bool client_has_ieee754_floats = true;	// the client's floats are IEEE-754 compliant
 			bool client_supports_subnormals = true; // the client supports subnormal numbers
-			int client_protocol_version =
-				request_protocol_version; // assume that the client wants to use the same
-										  // version for data transmission
-			int client_value_size =
-				serv_->info_->channel_bytes(); // assume that the client has a standard size for
-											   // the relevant data type
+			// assume that the client wants to use the same version for data transmission
+			int client_protocol_version = request_protocol_version;
+			// assume that the client has a standard size for the relevant data type
+			int client_value_size = serv_->info_->channel_bytes();
 			lsl_channel_format_t format = serv_->info_->channel_format();
 
 			// read feed parameters

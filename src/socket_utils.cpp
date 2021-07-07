@@ -1,16 +1,37 @@
 #include "socket_utils.h"
 #include "api_config.h"
 #include "common.h"
+#include "loguru.hpp"
 #include <boost/endian/conversion.hpp>
+#include <chrono>
 
-double lsl::measure_endian_performance() {
-	const double measure_duration = 0.01;
-	const double t_end = lsl_clock() + measure_duration;
+
+/// actual computation for the endian performance measurement
+int _measure_endian_performance() {
+	const auto measure_duration = std::chrono::milliseconds(10);
+	const auto t_start = std::chrono::steady_clock::now();
+
 	uint64_t data = 0x01020304;
-	double k;
-	for (k = 0; ((int)k & 0xFF) != 0 || lsl_clock() < t_end; k++)
+	int k = 0;
+	for (; (k & 0xFFFF) != 0 || std::chrono::steady_clock::now() - t_start < measure_duration; k++)
 		lslboost::endian::endian_reverse_inplace(data);
+
+	// time taken in centiseconds (10s/1000)
+	std::chrono::duration<double, std::ratio<10, 1000>> benchmark_time =
+		std::chrono::steady_clock::now() - t_start;
+	LOG_F(INFO, "Endian performance n: %d, per 10ms: %.0f, t: %f ms", k, k / benchmark_time.count(), benchmark_time.count() * 10);
+	k = static_cast<int>(k / benchmark_time.count());
+
 	return k;
+}
+
+int lsl::measure_endian_performance() {
+	static int measured_endian_performance{-1};
+	// calculate the endian performance once
+	if (measured_endian_performance == -1)
+		measured_endian_performance = _measure_endian_performance();
+	// return the cached endian performance
+	return measured_endian_performance;
 }
 
 template <typename Socket, typename Protocol>

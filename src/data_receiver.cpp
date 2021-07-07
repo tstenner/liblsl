@@ -172,8 +172,8 @@ void data_receiver::data_thread() {
 								  << conn_.current_uid() << "\r\n";
 					// transmit request parameters
 					server_stream << "Native-Byte-Order: " << BOOST_BYTE_ORDER << "\r\n";
-					server_stream << "Endian-Performance: "
-								  << std::floor(measure_endian_performance()) << "\r\n";
+					server_stream << "Endian-Performance: " << measure_endian_performance()
+								  << "\r\n";
 					server_stream << "Has-IEEE754-Floats: "
 								  << (format_ieee754[cft_float32] && format_ieee754[cft_double64])
 								  << "\r\n";

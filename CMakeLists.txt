@@ -114,7 +114,7 @@ if(LSL_BUNDLED_PUGIXML)
 	message(STATUS "Using bundled pugixml")
 	target_sources(lslobj PRIVATE thirdparty/pugixml/pugixml.cpp)
 	target_include_directories(lslobj SYSTEM PUBLIC
-		${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/pugixml)
+		$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/pugixml>)
 else()
 	message(STATUS "Using system pugixml")
 	find_package(pugixml REQUIRED)
@@ -178,19 +178,21 @@ target_compile_definitions(lslboost
 		BOOST_THREAD_DONT_PROVIDE_INTERRUPTIONS
 )
 target_include_directories(lslboost SYSTEM PUBLIC
-	${CMAKE_CURRENT_SOURCE_DIR}/lslboost)
+	$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/lslboost>)
 
-# target configuration for the internal lslobj target
-target_link_libraries(lslobj PRIVATE lslboost)
 target_include_directories(lslobj
 	PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/include>
 	)
-target_include_directories(lslobj SYSTEM PUBLIC
-	$<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/thirdparty/loguru>
+target_include_directories(lslobj
+	SYSTEM PUBLIC
+		$<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/thirdparty/loguru>
 )
-target_compile_definitions(lslobj PRIVATE
-	LIBLSL_EXPORTS
-	LOGURU_DEBUG_LOGGING=$<BOOL:${LSL_DEBUGLOG}>
+target_compile_definitions(lslobj
+	PRIVATE
+		LOGURU_DEBUG_LOGGING=$<BOOL:${LSL_DEBUGLOG}>
+		LIBLSL_EXPORTS
+	PUBLIC
+		$<$<BOOL:${LSL_BUILD_STATIC}>:LIBLSL_STATIC>
 )
 
 # platform specific configuration
@@ -199,17 +201,17 @@ if(UNIX AND NOT APPLE)
 	# check that clock_gettime is present in the stdlib, link against librt otherwise
 	check_symbol_exists(clock_gettime time.h HAS_GETTIME)
 	if(NOT HAS_GETTIME)
-		target_link_libraries(lslobj PRIVATE rt)
+		target_link_libraries(lslobj PUBLIC rt)
 	endif()
 	if(LSL_DEBUGLOG)
-		target_link_libraries(lslobj PRIVATE dl)
+		target_link_libraries(lslobj PUBLIC dl)
 	endif()
 elseif(WIN32)
-	target_link_libraries(lslobj PRIVATE iphlpapi winmm)
-	target_link_libraries(lslboost PRIVATE bcrypt mswsock ws2_32)
+	target_link_libraries(lslobj PUBLIC iphlpapi winmm)
+	target_link_libraries(lslboost PUBLIC mswsock ws2_32)
 	target_compile_definitions(lslobj
 		PRIVATE _CRT_SECURE_NO_WARNINGS
-		PUBLIC LSLNOAUTOLINK # don't use #pragma(lib) in CMake builds
+		PUBLIC $<$<CXX_COMPILER_ID:MSVC>:LSLNOAUTOLINK> # don't use #pragma(lib) in CMake builds
 		)
 	target_compile_definitions(lslboost
 		PUBLIC _WIN32_WINNT=${LSL_WINVER}
@@ -217,21 +219,37 @@ elseif(WIN32)
 		)
 endif()
 
+# copies properties from SrcTarget to DestTarget
+# needs to run *after* all FooObjects properties are set!
+#
+# `example: lsl_copy_properties(FooObjects LibFoo "INTERFACE_" "")`
+# copies FooObjects.INTERFACE_LINK_LIBRARIES etc. to LibFoo.LINK_LIBRARIES
+# this is what `target_link_libraries(LibFoo PRIVATE FooObjects)` should do,
+# but instead of copying the properties (as done here), it adds references to
+# the FooObjects properties to LibFoo so the STATIC LibFoo can't be exported without
+# also exporting FooObjects
+function(lsl_copy_properties SrcTarget DestTarget SrcPrefix DestPrefix)
+	foreach(PROPERTY INCLUDE_DIRECTORIES LINK_LIBRARIES COMPILE_DEFINITIONS COMPILE_FEATURES)
+		get_property(propvalue TARGET ${SrcTarget} PROPERTY "${SrcPrefix}${PROPERTY}")
+		set_property(TARGET ${DestTarget} APPEND PROPERTY "${DestPrefix}${PROPERTY}" ${propvalue})
+		message(STATUS "Added ${DestTarget}.${DestPrefix}${PROPERTY} - ${propvalue}")
+	endforeach()
+endfunction()
+
+
+# target configuration for the internal lslobj target
+target_link_libraries(lslobj PRIVATE $<TARGET_OBJECTS:lslboost> Threads::Threads)
+lsl_copy_properties(lslboost lslobj "INTERFACE_" "")
+
 # the "real" liblsl library. It contains one source with the version info
 # string because some generators require it. The remaining source code is
 # built in the lslobj target and later linked into this library
 add_library(lsl ${LSL_LIB_TYPE} src/buildinfo.cpp)
 
-# defines for LSL_CPP_API export header (shared: dllimport/dllexport)
-target_compile_definitions(lsl PUBLIC
-	$<IF:$<BOOL:${LSL_BUILD_STATIC}>,LIBLSL_STATIC,LIBLSL_EXPORTS>
-	$<$<CXX_COMPILER_ID:MSVC>:LSLNOAUTOLINK> # don't use #pragma(lib) in CMake builds
-)
-target_link_libraries(lsl PRIVATE lslobj lslboost)
-target_include_directories(lsl INTERFACE
-	$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-	$<INSTALL_INTERFACE:include>
-)
+target_link_libraries(lsl PRIVATE $<TARGET_OBJECTS:lslobj>)
+lsl_copy_properties(lslobj lsl "INTERFACE_" "INTERFACE_")
+lsl_copy_properties(lslobj lsl "INTERFACE_" "")
+
 set_target_properties(lsl PROPERTIES
 	VERSION ${liblsl_VERSION_MAJOR}.${liblsl_VERSION_MINOR}.${liblsl_VERSION_PATCH}
 )

@@ -41,8 +41,15 @@ add_executable(lsl_test_internal
 	internal/postproc.cpp
 	internal/serialization_v100.cpp
 )
-target_link_libraries(lsl_test_internal PRIVATE lslobj lslboost catch_main)
-target_include_directories(lsl_test_internal PRIVATE ${CMAKE_CURRENT_LIST_DIR}/../src/)
+target_link_libraries(lsl_test_internal PRIVATE
+	lslobj
+	catch_main
+	$<TARGET_OBJECTS:lslboost>
+	)
+lsl_copy_properties(lslboost lsl_test_internal "INTERFACE_" "")
+target_include_directories(lsl_test_internal
+	PRIVATE ${CMAKE_CURRENT_LIST_DIR}/../src/
+)
 
 if(LSL_BENCHMARKS)
 	# to get somewhat reproducible performance numbers:
@@ -59,7 +66,7 @@ if(LSL_BENCHMARKS)
 	add_executable(lsl_bench_internal
 		bench_int_sleep.cpp
 	)
-	target_link_libraries(lsl_bench_internal PRIVATE lslobj lslboost catch_main)
+	target_link_libraries(lsl_bench_internal PRIVATE lslobj catch_main)
 	target_include_directories(lsl_test_internal PRIVATE ${CMAKE_CURRENT_LIST_DIR}/../src/)
 	installLSLApp(lsl_bench_internal)
 endif()

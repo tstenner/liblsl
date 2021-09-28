@@ -75,6 +75,8 @@ add_library(lslobj OBJECT
 	src/resolver_impl.h
 	src/resolve_attempt_udp.cpp
 	src/resolve_attempt_udp.h
+	src/resolve_packet_sender.cpp
+	src/resolve_packet_sender.hpp
 	src/sample.cpp
 	src/sample.h
 	src/send_buffer.cpp

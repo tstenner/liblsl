@@ -48,6 +48,7 @@ add_library(lslobj OBJECT
 	src/api_config.cpp
 	src/api_config.h
 	src/api_types.hpp
+	src/cancellable_streambuf.cpp
 	src/cancellable_streambuf.h
 	src/cancellation.h
 	src/cancellation.cpp

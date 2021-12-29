@@ -15,6 +15,7 @@
 
 #define BOOST_ASIO_NO_DEPRECATED
 #include "cancellation.h"
+#include <array>
 #include <asio/basic_stream_socket.hpp>
 #include <asio/io_context.hpp>
 #include <asio/ip/tcp.hpp>
@@ -47,12 +48,7 @@ public:
 	 * All blocking operations will fail after a cancel() has been issued,
 	 * and the stream buffer cannot be reused.
 	 */
-	void cancel() override {
-		cancel_issued_ = true;
-		std::lock_guard<std::recursive_mutex> lock(cancel_mut_);
-		cancel_started_ = false;
-		asio::post(this->as_context(), [this]() { close_if_open(); });
-	}
+	void cancel() override;
 
 
 	/// Establish a connection.
@@ -63,21 +59,13 @@ public:
 	 * pointer otherwise.
 	 */
 	cancellable_streambuf *connect(const Protocol::endpoint &endpoint) {
-		{
-			std::lock_guard<std::recursive_mutex> lock(cancel_mut_);
-			if (cancel_issued_)
-				throw std::runtime_error(
-					"Attempt to connect() a cancellable_streambuf after it has been cancelled.");
+		if (cancelled_)
+			throw std::logic_error("Attempt to connect() a cancelled streambuf");
 
-			init_buffers();
-			socket().close(ec_);
-			socket().async_connect(
-				endpoint, [this](const asio::error_code &ec) { this->ec_ = ec; });
-			this->as_context().restart();
-		}
-		ec_ = asio::error::would_block;
-		do as_context().run_one();
-		while (!cancel_issued_ && ec_ == asio::error::would_block);
+		init_buffers();
+		socket().close(ec_);
+		socket().async_connect(endpoint, [this](const asio::error_code &ec) { this->ec_ = ec; });
+		run_io_ctx();
 		return !ec_ ? this : nullptr;
 	}
 
@@ -88,8 +76,7 @@ public:
 	 */
 	cancellable_streambuf *close() {
 		sync();
-		socket().close(ec_);
-		if (!ec_) init_buffers();
+		close_if_open();
 		return !ec_ ? this : nullptr;
 	}
 
@@ -102,10 +89,15 @@ public:
 protected:
 	/// Close the socket if it's open.
 	void close_if_open() {
-		if (!cancel_started_ && socket().is_open()) {
-			cancel_started_ = true;
-			socket().close();
-		}
+		cancelled_ = true;
+		socket().shutdown(Socket::shutdown_both, ec_);
+		socket().close(ec_);
+	}
+
+	/// Estimate bytes available in the buffer and the socket's OS buffer
+	std::streamsize showmanyc() override {
+		asio::error_code ec;
+		return egptr() - gptr() + static_cast<std::streamsize>(socket().available(ec));
 	}
 
 	/// Convenience method to call methods inherited from `Socket`
@@ -114,87 +106,53 @@ protected:
 	/// Convenience method to call methods inherited from `io_context`
 	asio::io_context &as_context() { return *this; }
 
-	/// Make sure that a cancellation, if issued, is not being eaten by `io_context::reset()`
-	void protected_reset() {
-		std::lock_guard<std::recursive_mutex> lock(cancel_mut_);
-		// if the cancel() comes between completion of a run_one() and this call, close will be
-		// issued right here at the next opportunity
-		if (cancel_issued_) close_if_open();
-		this->as_context().restart();
-		// if the cancel() comes between this call and a completion of run_one(), the posted close
-		// will be processed by the run_one
-	}
+	/// read bytes from the socket into the get buffer
+	int_type underflow() override;
 
-	int_type underflow() override {
-		if (gptr() == egptr()) {
-			std::size_t bytes_transferred_;
-			socket().async_receive(asio::buffer(asio::buffer(get_buffer_) + putback_max),
-				[this, &bytes_transferred_](
-					const asio::error_code &ec, std::size_t bytes_transferred = 0) {
-					this->ec_ = ec;
-					bytes_transferred_ = bytes_transferred;
-				});
+	/// optimized version of xsgetn, skips the input buffer on underflow
+	std::streamsize xsgetn( char_type* s, std::streamsize count ) override;
 
-			ec_ = asio::error::would_block;
-			protected_reset(); // line changed for lsl
-			do as_context().run_one();
-			while (!cancel_issued_ && ec_ == asio::error::would_block);
-			if (ec_) return traits_type::eof();
+	/// flush the output buffer to the socket
+	int_type overflow(int_type c) override;
 
-			setg(&get_buffer_[0], &get_buffer_[0] + putback_max,
-				&get_buffer_[0] + putback_max + bytes_transferred_);
-			return traits_type::to_int_type(*gptr());
-		} else
-			return traits_type::eof();
-	}
-
-	int_type overflow(int_type c) override {
-		// Send all data in the output buffer.
-		asio::const_buffer buffer = asio::buffer(pbase(), pptr() - pbase());
-		while (asio::buffer_size(buffer) > 0) {
-			std::size_t bytes_transferred_;
-			socket().async_send(
-				asio::buffer(buffer), [this, &bytes_transferred_](const asio::error_code &ec,
-										  std::size_t bytes_transferred) {
-					this->ec_ = ec;
-					bytes_transferred_ = bytes_transferred;
-				});
-			ec_ = asio::error::would_block;
-			protected_reset(); // line changed for lsl
-			do as_context().run_one();
-			while (!cancel_issued_ && ec_ == asio::error::would_block);
-			if (ec_) return traits_type::eof();
-			buffer = buffer + bytes_transferred_;
-		}
-		setp(&put_buffer_[0], &put_buffer_[0] + sizeof(put_buffer_));
-
-		// If the new character is eof then our work here is done.
-		if (traits_type::eq_int_type(c, traits_type::eof())) return traits_type::not_eof(c);
-
-		// Add the new character to the output buffer.
-		*pptr() = traits_type::to_char_type(c);
-		pbump(1);
-		return c;
-	}
-
+	/// flush the output buffer to the socket
 	int sync() override { return overflow(traits_type::eof()); }
 
-	std::streambuf *setbuf(char_type *, std::streamsize) override {
+	std::streambuf *setbuf(char_type * /*unused*/, std::streamsize /*unused*/) override {
 		// this feature was stripped out...
 		return nullptr;
 	}
 
+private:
+	/// Start an async receive operation that runs until enough data has been received
+	void async_receive_all(std::array<asio::mutable_buffer, 2>& buf, std::size_t &bytes_transferred);
+
+	/// lock the io_ctx spinlock `running_`
+	bool try_wait_for_runnable_state() noexcept;
+	/// run the io_context until it runs out of work, the streambuf is cancelled or an error occurs
+	bool run_io_ctx() noexcept;
+
+	/// receive data into an (optional) user supplied buffer and the `get_buffer_`
+	std::streamsize recv(char* target = nullptr, std::size_t target_size = 0);
+
+	/** Resets the get buffer positions
+	 * @param bytes_available Number of already retrieved bytes at the beginning of the buffer
+	 */
+	void init_get_buffer(std::size_t bytes_available = 0) {
+		setg(&get_buffer_[0], &get_buffer_[0] + putback_max,
+			&get_buffer_[0] + putback_max + bytes_available);
+	}
+
 	void init_buffers() {
-		setg(&get_buffer_[0], &get_buffer_[0] + putback_max, &get_buffer_[0] + putback_max);
+		init_get_buffer();
 		setp(&put_buffer_[0], &put_buffer_[0] + sizeof(put_buffer_));
 	}
 
-	enum { putback_max = 8 };
-	enum { buffer_size = 16384 };
-	char get_buffer_[buffer_size], put_buffer_[buffer_size];
+	enum { putback_max = 8, buffer_size = 16384 };
+	std::atomic<bool> cancelled_{false};
+	char get_buffer_[buffer_size]{0}, put_buffer_[buffer_size]{0};
 	asio::error_code ec_;
-	std::atomic<bool> cancel_issued_{false};
-	bool cancel_started_{false};
-	std::recursive_mutex cancel_mut_;
+	/// spinlock to protect the io_ctx
+	std::atomic<bool> running_{false};
 };
 } // namespace lsl

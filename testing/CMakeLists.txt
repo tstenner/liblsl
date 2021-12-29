@@ -17,7 +17,7 @@ find_package(Threads REQUIRED)
 target_link_libraries(catch_main PUBLIC Threads::Threads)
 
 target_compile_definitions(catch_main PRIVATE LSL_VERSION_INFO="${LSL_VERSION_INFO}")
-target_include_directories(catch_main PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty)
+target_include_directories(catch_main SYSTEM PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty)
 if(LSL_BENCHMARKS)
 	target_compile_definitions(catch_main PUBLIC CATCH_CONFIG_ENABLE_BENCHMARKING)
 endif()
@@ -30,8 +30,10 @@ add_library(common OBJECT
 )
 target_compile_features(common PUBLIC cxx_std_14)
 target_include_directories(common PUBLIC
-	$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty>
 	$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../src>
+)
+target_include_directories(common PUBLIC SYSTEM
+	$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty>
 )
 
 

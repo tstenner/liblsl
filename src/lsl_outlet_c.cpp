@@ -185,14 +185,15 @@ LIBLSL_C_API int32_t lsl_push_sample_rawtpn(lsl_outlet out, void **data, const u
 				// For strings we place in std::string vector to make sure they are properly
 				//  terminated.
 				std::vector<std::string> tmp;
+				tmp.reserve(nbufs);
 				for (uint32_t k = 0; k < nbufs; k++)
 					tmp.emplace_back((const char *)data[k], bytes[k]);
-				return outimpl->push_sample_noexcept(&tmp[0], timestamp, pushthrough);
+				return outimpl->push_sample_noexcept(tmp.data(), timestamp, pushthrough);
 			} else {
 				// Otherwise we put into new memory block.
 				uint32_t total_bytes = 0, byte_offset = 0;
 				for (size_t k = 0; k < nbufs; k++) { total_bytes += bytes[k]; }
-				char *tmp = (char *)malloc(total_bytes);
+				char *tmp = new char[total_bytes];
 				for (size_t k = 0; k < nbufs; k++) {
 					memcpy(&tmp[byte_offset], data[k], bytes[k]);
 					byte_offset += bytes[k];
@@ -204,22 +205,28 @@ LIBLSL_C_API int32_t lsl_push_sample_rawtpn(lsl_outlet out, void **data, const u
 				switch (outimpl->info().channel_format()) {
 				case cft_int8:
 					ec = outimpl->push_sample_noexcept((const char *)tmp, timestamp, pushthrough);
+					break;
 				case cft_int16:
 					ec =
 						outimpl->push_sample_noexcept((const int16_t *)tmp, timestamp, pushthrough);
+					break;
 				case cft_int32:
 					ec =
 						outimpl->push_sample_noexcept((const int32_t *)tmp, timestamp, pushthrough);
+					break;
 				case cft_int64:
 					ec =
 						outimpl->push_sample_noexcept((const int64_t *)tmp, timestamp, pushthrough);
+					break;
 				case cft_float32:
 					ec = outimpl->push_sample_noexcept((const float *)tmp, timestamp, pushthrough);
+					break;
 				case cft_double64:
 					ec = outimpl->push_sample_noexcept((const double *)tmp, timestamp, pushthrough);
+					break;
 				case cft_undefined: ec = lsl_internal_error;
 				}
-				free(tmp);
+				delete[](tmp);
 				return ec;
 			}
 		}

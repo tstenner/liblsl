@@ -97,7 +97,7 @@ lsl::cancellable_streambuf::int_type lsl::cancellable_streambuf::underflow() {
 }
 
 std::streamsize lsl::cancellable_streambuf::xsgetn(char_type *s, std::streamsize count) {
-	auto buffered = std::min(egptr() - gptr(), count);
+	auto buffered = std::min<std::streamsize>(egptr() - gptr(), count);
 
 	// copy already buffered bytes first
 	if (buffered > 0) {

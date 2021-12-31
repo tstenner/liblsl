@@ -17,39 +17,16 @@ void lsl::cancellable_streambuf::async_receive_all(
 	});
 }
 
-bool lsl::cancellable_streambuf::try_wait_for_runnable_state() noexcept
-{
-	// https://rigtorp.se/spinlock/
-	while(true) {
-		// Optimistically assume the lock is free on the first try
-		if(!running_.exchange(true, std::memory_order_acquire)) return true;
-
-		// Wait for lock to be released without generating cache misses
-		while(running_.load(std::memory_order_relaxed)) {
-			if(cancelled_.load(std::memory_order_relaxed)) return false;
-			else std::this_thread::yield();
-		}
-	}
-}
-
 bool lsl::cancellable_streambuf::run_io_ctx() noexcept
 {
-	if(!try_wait_for_runnable_state()) return false;
-
+	std::lock_guard<std::mutex> lock(mutex_io_ctx_);
 	ec_ = asio::error_code();
-	try {
-		as_context().restart();
-		// run until we've been cancelled, run out of work or encountered an error
-		while(true)
-			if(cancelled_ || !as_context().run_one() || ec_) break;
-	} catch(std::exception& e) {
-		LOG_F(ERROR, "Error in cancellable_streambuf::run_io_ctx: %s", e.what());
-		running_.store(false, std::memory_order_release);
-		throw;
+	as_context().restart();
+	// run until we've been cancelled, run out of work or encountered an error
+	while (true) {
+		if (!as_context().run_one()) return true;
+		if (cancelled_ || ec_) return false;
 	}
-	// release the lock
-	running_.store(false, std::memory_order_release);
-	return !cancelled_ && !ec_;
 }
 
 std::streamsize lsl::cancellable_streambuf::recv(char *target, std::size_t target_size) {
@@ -74,20 +51,20 @@ std::streamsize lsl::cancellable_streambuf::recv(char *target, std::size_t targe
 
 void lsl::cancellable_streambuf::cancel()
 {
-	if(!running_.exchange(true)) {
+	std::unique_lock<std::mutex> lock(mutex_io_ctx_, std::defer_lock);
+	if(lock.try_lock()) {
 		// no io_ctx running: close the socket in this thread
 		close_if_open();
 	} else {
 		asio::post(as_context(), [this](){ close_if_open(); });
 		// wait for a potentially running io_ctx to finish
-		try_wait_for_runnable_state();
+		lock.lock();
 
 		// double check that the socket is really closed, i.e. the asio::post didn't happen after
 		// the io_ctx finished and the spinlock running_ was reset
 		if(socket().is_open())
 			close_if_open();
 	}
-	running_ = false;
 }
 
 lsl::cancellable_streambuf::int_type lsl::cancellable_streambuf::underflow() {

@@ -127,8 +127,6 @@ private:
 	/// Start an async receive operation that runs until enough data has been received
 	void async_receive_all(std::array<asio::mutable_buffer, 2>& buf, std::size_t &bytes_transferred);
 
-	/// lock the io_ctx spinlock `running_`
-	bool try_wait_for_runnable_state() noexcept;
 	/// run the io_context until it runs out of work, the streambuf is cancelled or an error occurs
 	bool run_io_ctx() noexcept;
 
@@ -152,7 +150,6 @@ private:
 	std::atomic<bool> cancelled_{false};
 	char get_buffer_[buffer_size]{0}, put_buffer_[buffer_size]{0};
 	asio::error_code ec_;
-	/// spinlock to protect the io_ctx
-	std::atomic<bool> running_{false};
+	std::mutex mutex_io_ctx_;
 };
 } // namespace lsl

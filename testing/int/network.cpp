@@ -86,7 +86,7 @@ template <typename T> void cancel_streambuf(T &&task, lsl::cancellable_streambuf
 	}
 }
 
-TEST_CASE("streambuf cancel connect()", "[streambuf][basic][network]") {
+TEST_CASE("streambuf_cancel_connect", "[streambuf][basic][network]") {
 	asio::io_context io_ctx;
 	lsl::cancellable_streambuf sb_connect;
 	INFO("Thread 0: Binding remote socket and keeping it busy…")
@@ -115,13 +115,12 @@ TEST_CASE("streambuf cancel connect()", "[streambuf][basic][network]") {
 	cancel_streambuf(
 		[&sb_connect, ep]() {
 			sb_connect.connect(ep);
-			MINFO(sb_connect.error().message())
 			REQUIRE(sb_connect.sbumpc() == std::char_traits<char>::eof());
 		},
 		sb_connect);
 }
 
-TEST_CASE("unconnected streambufs don't crash", "[streambuf][basic][network]") {
+TEST_CASE("streambuf_cancel_unconnected", "[streambuf][basic][network]") {
 	asio::io_context io_ctx;
 	lsl::cancellable_streambuf sb_failedconnect;
 	ip::tcp::endpoint ep(ip::address_v4::loopback(), 1);
@@ -130,7 +129,7 @@ TEST_CASE("unconnected streambufs don't crash", "[streambuf][basic][network]") {
 	lsl::cancellable_streambuf().cancel();
 }
 
-TEST_CASE("cancel streambuf reads", "[streambuf][network][!mayfail]") {
+TEST_CASE("streambuf_cancel_read", "[streambuf][network][!mayfail]") {
 	asio::io_context io_ctx;
 	lsl::cancellable_streambuf sb_read;
 	ip::tcp::endpoint ep(ip::address_v4::loopback(), port++);
@@ -146,13 +145,12 @@ TEST_CASE("cancel streambuf reads", "[streambuf][network][!mayfail]") {
 	cancel_streambuf(
 		[&sb_read]() {
 			auto data = sb_read.sbumpc();
-			MINFO(sb_read.error().message())
 			CHECK(data == std::char_traits<char>::eof());
 		},
 		sb_read);
 }
 
-TEST_CASE("streambuf split reads", "[streambuf][network]") {
+TEST_CASE("streambuf_read", "[streambuf][network]") {
 	asio::io_context io_ctx;
 	lsl::cancellable_streambuf sb_read;
 	ip::tcp::endpoint ep(ip::address_v4::loopback(), port++);
@@ -191,7 +189,7 @@ TEST_CASE("streambuf split reads", "[streambuf][network]") {
 	REQUIRE(std::equal(in_.begin(), in_.end(), out_.begin()));
 }
 
-TEST_CASE("receive v4 packets on v6 socket", "[ipv6][network]") {
+TEST_CASE("network_recv_v4_on_v6_sock", "[ipv6][network]") {
 	const uint16_t test_port = port++;
 	asio::io_context io_ctx;
 	ip::udp::socket sock(io_ctx, ip::udp::v6());
@@ -213,7 +211,7 @@ TEST_CASE("receive v4 packets on v6 socket", "[ipv6][network]") {
 	std::fill_n(recvbuf, recv_len, 0);
 }
 
-TEST_CASE("ipaddresses", "[ipv6][network][basic]") {
+TEST_CASE("network_ipaddresses", "[ipv6][network][basic]") {
 	ip::address_v4 v4addr(ip::make_address_v4("192.168.172.1")),
 		mcastv4(ip::make_address_v4("239.0.0.183"));
 	ip::address_v6 v6addr = ip::make_address_v6(ip::v4_mapped_t(), v4addr);
@@ -231,7 +229,7 @@ TEST_CASE("ipaddresses", "[ipv6][network][basic]") {
 }
 
 /// Can multiple sockets bind to the same port and receive all broad-/multicast packets?
-TEST_CASE("reuseport", "[network][basic][!mayfail]") {
+TEST_CASE("network_reuseport", "[network][basic][!mayfail]") {
 	// Linux: sudo ip link set lo multicast on; sudo ip mroute show table all
 
 	auto addrstr = GENERATE((const char *)"224.0.0.1", "255.255.255.255", "ff03::1");
@@ -289,7 +287,7 @@ TEST_CASE("reuseport", "[network][basic][!mayfail]") {
 	}
 }
 
-TEST_CASE("bindzero", "[network][basic]") {
+TEST_CASE("network_bindzero", "[network][basic]") {
 	asio::io_context ctx;
 	asio::ip::udp::socket sock(ctx, asio::ip::udp::v4());
 	sock.bind(asio::ip::udp::endpoint(asio::ip::address_v4::any(), 0));
@@ -298,7 +296,7 @@ TEST_CASE("bindzero", "[network][basic]") {
 
 #ifdef CATCH_CONFIG_ENABLE_BENCHMARKING
 
-TEST_CASE("streambuf throughput", "[streambuf][network]") {
+TEST_CASE("streambuf_bench", "[streambuf][network]") {
 	asio::io_context io_ctx;
 	asio::executor_work_guard<asio::io_context::executor_type> work(io_ctx.get_executor());
 	auto background_io = launch_task([&]() { io_ctx.run(); });

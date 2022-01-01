@@ -61,7 +61,7 @@ void lsl::cancellable_streambuf::cancel()
 		lock.lock();
 
 		// double check that the socket is really closed, i.e. the asio::post didn't happen after
-		// the io_ctx finished and the spinlock running_ was reset
+		// the io_ctx finished and the mutex was unlocked
 		if(socket().is_open())
 			close_if_open();
 	}
@@ -69,7 +69,6 @@ void lsl::cancellable_streambuf::cancel()
 
 lsl::cancellable_streambuf::int_type lsl::cancellable_streambuf::underflow() {
 	if (gptr() == egptr() && recv() > 0) return traits_type::to_int_type(*gptr());
-
 	return traits_type::eof();
 }
 
@@ -94,8 +93,7 @@ lsl::cancellable_streambuf::int_type lsl::cancellable_streambuf::overflow(int_ty
 	asio::async_write(socket(), asio::buffer(pbase(), static_cast<std::size_t>(pptr() - pbase())),
 		[this](const asio::error_code &ec, std::size_t /* unused */) { this->ec_ = ec; });
 
-	run_io_ctx();
-	if (ec_) return traits_type::eof();
+	if (!run_io_ctx()) return traits_type::eof();
 
 	setp(put_buffer_, put_buffer_ + buffer_size);
 

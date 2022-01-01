@@ -76,6 +76,7 @@ public:
 	 */
 	cancellable_streambuf *close() {
 		sync();
+		std::lock_guard<std::mutex> lock(mutex_io_ctx_);
 		close_if_open();
 		return !ec_ ? this : nullptr;
 	}
@@ -84,7 +85,10 @@ public:
 	 * @return An \c error_code corresponding to the last error from the stream
 	 * buffer.
 	 */
-	const asio::error_code &error() const { return ec_; }
+	asio::error_code error() {
+		std::lock_guard<std::mutex> lock(mutex_io_ctx_);
+		return ec_;
+	}
 
 protected:
 	/// Close the socket if it's open.

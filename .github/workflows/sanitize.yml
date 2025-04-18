@@ -20,7 +20,7 @@ defaults:
     shell: bash
 
 env:
-  LLVM_VERSION: 18
+  LLVM_VERSION: 20
 
 jobs:
   build:
@@ -32,7 +32,7 @@ jobs:
       - name: Install build toolchain
         run: |
           curl -sSL https://apt.llvm.org/llvm-snapshot.gpg.key | sudo gpg --dearmor --yes -o /etc/apt/trusted.gpg.d/llvm.gpg
-          echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-$LLVM_VERSION main" | sudo tee /etc/apt/sources.list.d/llvm.list
+          echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-$LLVM_VERSION main" | sudo tee /etc/apt/sources.list.d/llvm.list
           sudo apt update
           sudo apt install -y libpugixml-dev clang-$LLVM_VERSION gdb
       - name: Configure CMake
